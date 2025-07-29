@@ -28,11 +28,10 @@ func main() {
 	r := chi.NewRouter()
 
 	// Configure middleware
-	r.Use(middleware.Logger())
-	r.Use(middleware.Recovery())
-	r.Use(middleware.RequestID())
-	r.Use(middleware.RealIP())
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recovery)
 
 	// Configure CORS
 	r.Use(cors.Handler(cors.Options{
@@ -61,11 +60,8 @@ func main() {
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      r,
-		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
-		IdleTimeout:  time.Duration(cfg.Server.IdleTimeout) * time.Second,
+		Addr:    ":" + cfg.Server.Port,
+		Handler: r,
 	}
 
 	// Channel to listen for interrupt signals

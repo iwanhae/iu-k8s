@@ -1,6 +1,8 @@
 package handlers
 
-import "iu-k8s.linecorp.com/server/internal/api"
+import (
+	"iu-k8s.linecorp.com/server/internal/api"
+)
 
 var _ api.StrictServerInterface = (*aggregated)(nil)
 

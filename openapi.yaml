@@ -31,6 +31,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /debug/log:
+    get:
+      summary: Sets the log level and format dynamically
+      operationId: setLogLevel
+      tags:
+        - management
+      parameters:
+        - name: level
+          in: query
+          description: The desired log level. If not provided, the current level is maintained.
+          required: false
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: format
+          in: query
+          description: The desired log format. If not provided, the current format is maintained.
+          required: false
+          schema:
+            type: string
+            enum: [json, text]
+      responses:
+        "200":
+          description: Log settings updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  level:
+                    type: string
+                    description: The new log level.
+                  format:
+                    type: string
+                    description: The new log format.
+        "400":
+          description: Invalid input for level or format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:

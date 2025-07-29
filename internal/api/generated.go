@@ -18,6 +18,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
@@ -25,6 +26,20 @@ import (
 const (
 	NotReady ReadinessResponseStatus = "not_ready"
 	Ready    ReadinessResponseStatus = "ready"
+)
+
+// Defines values for SetLogLevelParamsLevel.
+const (
+	Debug SetLogLevelParamsLevel = "debug"
+	Error SetLogLevelParamsLevel = "error"
+	Info  SetLogLevelParamsLevel = "info"
+	Warn  SetLogLevelParamsLevel = "warn"
+)
+
+// Defines values for SetLogLevelParamsFormat.
+const (
+	Json SetLogLevelParamsFormat = "json"
+	Text SetLogLevelParamsFormat = "text"
 )
 
 // ErrorResponse defines model for ErrorResponse.
@@ -69,8 +84,26 @@ type ReadinessResponse struct {
 // ReadinessResponseStatus Readiness status
 type ReadinessResponseStatus string
 
+// SetLogLevelParams defines parameters for SetLogLevel.
+type SetLogLevelParams struct {
+	// Level The desired log level. If not provided, the current level is maintained.
+	Level *SetLogLevelParamsLevel `form:"level,omitempty" json:"level,omitempty"`
+
+	// Format The desired log format. If not provided, the current format is maintained.
+	Format *SetLogLevelParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// SetLogLevelParamsLevel defines parameters for SetLogLevel.
+type SetLogLevelParamsLevel string
+
+// SetLogLevelParamsFormat defines parameters for SetLogLevel.
+type SetLogLevelParamsFormat string
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Sets the log level and format dynamically
+	// (GET /debug/log)
+	SetLogLevel(w http.ResponseWriter, r *http.Request, params SetLogLevelParams)
 	// Readiness check endpoint
 	// (GET /readyz)
 	GetReadiness(w http.ResponseWriter, r *http.Request)
@@ -79,6 +112,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Sets the log level and format dynamically
+// (GET /debug/log)
+func (_ Unimplemented) SetLogLevel(w http.ResponseWriter, r *http.Request, params SetLogLevelParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Readiness check endpoint
 // (GET /readyz)
@@ -94,6 +133,41 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// SetLogLevel operation middleware
+func (siw *ServerInterfaceWrapper) SetLogLevel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetLogLevelParams
+
+	// ------------- Optional query parameter "level" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "level", r.URL.Query(), &params.Level)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "level", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "format", r.URL.Query(), &params.Format)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetLogLevel(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetReadiness operation middleware
 func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.Request) {
@@ -223,10 +297,45 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/debug/log", wrapper.SetLogLevel)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/readyz", wrapper.GetReadiness)
 	})
 
 	return r
+}
+
+type SetLogLevelRequestObject struct {
+	Params SetLogLevelParams
+}
+
+type SetLogLevelResponseObject interface {
+	VisitSetLogLevelResponse(w http.ResponseWriter) error
+}
+
+type SetLogLevel200JSONResponse struct {
+	// Format The new log format.
+	Format *string `json:"format,omitempty"`
+
+	// Level The new log level.
+	Level *string `json:"level,omitempty"`
+}
+
+func (response SetLogLevel200JSONResponse) VisitSetLogLevelResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetLogLevel400JSONResponse ErrorResponse
+
+func (response SetLogLevel400JSONResponse) VisitSetLogLevelResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GetReadinessRequestObject struct {
@@ -256,6 +365,9 @@ func (response GetReadiness500JSONResponse) VisitGetReadinessResponse(w http.Res
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Sets the log level and format dynamically
+	// (GET /debug/log)
+	SetLogLevel(ctx context.Context, request SetLogLevelRequestObject) (SetLogLevelResponseObject, error)
 	// Readiness check endpoint
 	// (GET /readyz)
 	GetReadiness(ctx context.Context, request GetReadinessRequestObject) (GetReadinessResponseObject, error)
@@ -290,6 +402,32 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// SetLogLevel operation middleware
+func (sh *strictHandler) SetLogLevel(w http.ResponseWriter, r *http.Request, params SetLogLevelParams) {
+	var request SetLogLevelRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetLogLevel(ctx, request.(SetLogLevelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetLogLevel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetLogLevelResponseObject); ok {
+		if err := validResponse.VisitSetLogLevelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetReadiness operation middleware
 func (sh *strictHandler) GetReadiness(w http.ResponseWriter, r *http.Request) {
 	var request GetReadinessRequestObject
@@ -317,17 +455,21 @@ func (sh *strictHandler) GetReadiness(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

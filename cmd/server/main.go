@@ -16,22 +16,13 @@ import (
 	"iu-k8s.linecorp.com/server/internal/config"
 	"iu-k8s.linecorp.com/server/internal/handlers"
 	"iu-k8s.linecorp.com/server/internal/middleware"
-	"iu-k8s.linecorp.com/server/internal/repository"
-	"iu-k8s.linecorp.com/server/internal/service"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Initialize repository (in-memory for now)
-	userRepo := repository.NewInMemoryUserRepository()
-
-	// Initialize service
-	userService := service.NewUserService(userRepo)
-
-	// Initialize handler
-	userHandler := handlers.NewUserHandler(userService)
+	handler := handlers.New()
 
 	// Create router
 	r := chi.NewRouter()
@@ -63,7 +54,10 @@ func main() {
 	}
 
 	// Mount the generated API routes
-	api.HandlerFromMux(userHandler, r)
+	api.HandlerFromMux(
+		api.NewStrictHandler(handler, []api.StrictMiddlewareFunc{}),
+		r,
+	)
 
 	// Create HTTP server
 	srv := &http.Server{

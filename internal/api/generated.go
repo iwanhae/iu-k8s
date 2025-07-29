@@ -6,7 +6,9 @@ package api
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,27 +18,14 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
-	"github.com/oapi-codegen/runtime"
-	openapi_types "github.com/oapi-codegen/runtime/types"
+	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
-// Defines values for HealthResponseStatus.
+// Defines values for ReadinessResponseStatus.
 const (
-	Healthy   HealthResponseStatus = "healthy"
-	Unhealthy HealthResponseStatus = "unhealthy"
+	NotReady ReadinessResponseStatus = "not_ready"
+	Ready    ReadinessResponseStatus = "ready"
 )
-
-// CreateUserRequest defines model for CreateUserRequest.
-type CreateUserRequest struct {
-	// Avatar User avatar URL
-	Avatar *string `json:"avatar,omitempty"`
-
-	// Email User email address
-	Email openapi_types.Email `json:"email"`
-
-	// Name User full name
-	Name string `json:"name"`
-}
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -53,155 +42,47 @@ type ErrorResponse struct {
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
-// HealthResponse defines model for HealthResponse.
-type HealthResponse struct {
-	// Status Health status
-	Status HealthResponseStatus `json:"status"`
+// MetadataPagination defines model for MetadataPagination.
+type MetadataPagination struct {
+	// Cursor Cursor for pagination
+	Cursor int `json:"cursor"`
 
-	// Timestamp Timestamp of the health check
+	// HasMore Whether there are more items to fetch
+	HasMore bool `json:"hasMore"`
+}
+
+// ReadinessResponse defines model for ReadinessResponse.
+type ReadinessResponse struct {
+	// Message Human-readable message
+	Message *string `json:"message,omitempty"`
+
+	// Status Readiness status
+	Status ReadinessResponseStatus `json:"status"`
+
+	// Timestamp Timestamp of the readiness check
 	Timestamp time.Time `json:"timestamp"`
 
 	// Version Application version
-	Version *string `json:"version,omitempty"`
+	Version string `json:"version"`
 }
 
-// HealthResponseStatus Health status
-type HealthResponseStatus string
-
-// PaginationInfo defines model for PaginationInfo.
-type PaginationInfo struct {
-	// HasMore Whether there are more items available
-	HasMore *bool `json:"hasMore,omitempty"`
-
-	// Limit Maximum number of items returned
-	Limit int `json:"limit"`
-
-	// Offset Number of items skipped
-	Offset int `json:"offset"`
-
-	// Total Total number of items available
-	Total int `json:"total"`
-}
-
-// UpdateUserRequest defines model for UpdateUserRequest.
-type UpdateUserRequest struct {
-	// Avatar User avatar URL
-	Avatar *string `json:"avatar,omitempty"`
-
-	// Email User email address
-	Email *openapi_types.Email `json:"email,omitempty"`
-
-	// IsActive Whether the user is active
-	IsActive *bool `json:"isActive,omitempty"`
-
-	// Name User full name
-	Name *string `json:"name,omitempty"`
-}
-
-// User defines model for User.
-type User struct {
-	// Avatar User avatar URL
-	Avatar *string `json:"avatar,omitempty"`
-
-	// CreatedAt User creation timestamp
-	CreatedAt time.Time `json:"createdAt"`
-
-	// Email User email address
-	Email openapi_types.Email `json:"email"`
-
-	// Id User unique identifier
-	Id openapi_types.UUID `json:"id"`
-
-	// IsActive Whether the user is active
-	IsActive *bool `json:"isActive,omitempty"`
-
-	// Name User full name
-	Name string `json:"name"`
-
-	// UpdatedAt User last update timestamp
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-// UsersResponse defines model for UsersResponse.
-type UsersResponse struct {
-	Pagination PaginationInfo `json:"pagination"`
-	Users      []User         `json:"users"`
-}
-
-// ListUsersParams defines parameters for ListUsers.
-type ListUsersParams struct {
-	// Limit Maximum number of users to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Offset Number of users to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
-}
-
-// CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
-type CreateUserJSONRequestBody = CreateUserRequest
-
-// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
-type UpdateUserJSONRequestBody = UpdateUserRequest
+// ReadinessResponseStatus Readiness status
+type ReadinessResponseStatus string
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// List users
-	// (GET /api/v1/users)
-	ListUsers(w http.ResponseWriter, r *http.Request, params ListUsersParams)
-	// Create a new user
-	// (POST /api/v1/users)
-	CreateUser(w http.ResponseWriter, r *http.Request)
-	// Delete user
-	// (DELETE /api/v1/users/{userId})
-	DeleteUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
-	// Get user by ID
-	// (GET /api/v1/users/{userId})
-	GetUserById(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
-	// Update user
-	// (PUT /api/v1/users/{userId})
-	UpdateUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
-	// Health check endpoint
-	// (GET /health)
-	GetHealth(w http.ResponseWriter, r *http.Request)
+	// Readiness check endpoint
+	// (GET /readyz)
+	GetReadiness(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// List users
-// (GET /api/v1/users)
-func (_ Unimplemented) ListUsers(w http.ResponseWriter, r *http.Request, params ListUsersParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Create a new user
-// (POST /api/v1/users)
-func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Delete user
-// (DELETE /api/v1/users/{userId})
-func (_ Unimplemented) DeleteUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Get user by ID
-// (GET /api/v1/users/{userId})
-func (_ Unimplemented) GetUserById(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Update user
-// (PUT /api/v1/users/{userId})
-func (_ Unimplemented) UpdateUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Health check endpoint
-// (GET /health)
-func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+// Readiness check endpoint
+// (GET /readyz)
+func (_ Unimplemented) GetReadiness(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -214,135 +95,11 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// ListUsers operation middleware
-func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListUsersParams
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "offset" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
-		return
-	}
+// GetReadiness operation middleware
+func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListUsers(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateUser operation middleware
-func (siw *ServerInterfaceWrapper) CreateUser(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateUser(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteUser operation middleware
-func (siw *ServerInterfaceWrapper) DeleteUser(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "userId" -------------
-	var userId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteUser(w, r, userId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetUserById operation middleware
-func (siw *ServerInterfaceWrapper) GetUserById(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "userId" -------------
-	var userId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetUserById(w, r, userId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateUser operation middleware
-func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "userId" -------------
-	var userId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateUser(w, r, userId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetHealth operation middleware
-func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHealth(w, r)
+		siw.Handler.GetReadiness(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -466,51 +223,111 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/users", wrapper.ListUsers)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/users", wrapper.CreateUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/users/{userId}", wrapper.DeleteUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/users/{userId}", wrapper.GetUserById)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/users/{userId}", wrapper.UpdateUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
+		r.Get(options.BaseURL+"/readyz", wrapper.GetReadiness)
 	})
 
 	return r
 }
 
+type GetReadinessRequestObject struct {
+}
+
+type GetReadinessResponseObject interface {
+	VisitGetReadinessResponse(w http.ResponseWriter) error
+}
+
+type GetReadiness200JSONResponse ReadinessResponse
+
+func (response GetReadiness200JSONResponse) VisitGetReadinessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetReadiness500JSONResponse ErrorResponse
+
+func (response GetReadiness500JSONResponse) VisitGetReadinessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+// StrictServerInterface represents all server handlers.
+type StrictServerInterface interface {
+	// Readiness check endpoint
+	// (GET /readyz)
+	GetReadiness(ctx context.Context, request GetReadinessRequestObject) (GetReadinessResponseObject, error)
+}
+
+type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
+type StrictMiddlewareFunc = strictnethttp.StrictHTTPMiddlewareFunc
+
+type StrictHTTPServerOptions struct {
+	RequestErrorHandlerFunc  func(w http.ResponseWriter, r *http.Request, err error)
+	ResponseErrorHandlerFunc func(w http.ResponseWriter, r *http.Request, err error)
+}
+
+func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc) ServerInterface {
+	return &strictHandler{ssi: ssi, middlewares: middlewares, options: StrictHTTPServerOptions{
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		},
+	}}
+}
+
+func NewStrictHandlerWithOptions(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc, options StrictHTTPServerOptions) ServerInterface {
+	return &strictHandler{ssi: ssi, middlewares: middlewares, options: options}
+}
+
+type strictHandler struct {
+	ssi         StrictServerInterface
+	middlewares []StrictMiddlewareFunc
+	options     StrictHTTPServerOptions
+}
+
+// GetReadiness operation middleware
+func (sh *strictHandler) GetReadiness(w http.ResponseWriter, r *http.Request) {
+	var request GetReadinessRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReadiness(ctx, request.(GetReadinessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReadiness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReadinessResponseObject); ok {
+		if err := validResponse.VisitGetReadinessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

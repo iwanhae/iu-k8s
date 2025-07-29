@@ -1,210 +1,30 @@
 openapi: "3.1.0"
 info:
-  title: IU-K8s API
-  description: Backend API for IU-K8s project
+  title: IU K8s API
+  description: Backend API for IU K8s Operations
   version: 1.0.0
   contact:
-    name: API Support
-    email: support@example.com
+    name: IU K8s Support
+    slack: "#ext-help-iu-k8s"
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8888
     description: Development server
 
 paths:
-  /health:
+  /readyz:
     get:
-      summary: Health check endpoint
-      operationId: getHealth
+      summary: Readiness check endpoint
+      operationId: getReadiness
       tags:
-        - health
+        - management
       responses:
         "200":
-          description: Health status
+          description: Readiness status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/v1/users:
-    get:
-      summary: List users
-      operationId: listUsers
-      tags:
-        - users
-      parameters:
-        - name: limit
-          in: query
-          description: Maximum number of users to return
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-        - name: offset
-          in: query
-          description: Number of users to skip
-          required: false
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        "200":
-          description: List of users
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsersResponse"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    post:
-      summary: Create a new user
-      operationId: createUser
-      tags:
-        - users
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateUserRequest"
-      responses:
-        "201":
-          description: User created successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/v1/users/{userId}:
-    get:
-      summary: Get user by ID
-      operationId: getUserById
-      tags:
-        - users
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: User ID
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: User details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    put:
-      summary: Update user
-      operationId: updateUser
-      tags:
-        - users
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: User ID
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateUserRequest"
-      responses:
-        "200":
-          description: User updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    delete:
-      summary: Delete user
-      operationId: deleteUser
-      tags:
-        - users
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: User ID
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "204":
-          description: User deleted successfully
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ReadinessResponse"
         "500":
           description: Server error
           content:
@@ -214,135 +34,40 @@ paths:
 
 components:
   schemas:
-    HealthResponse:
+    ReadinessResponse:
       type: object
       required:
         - status
+        - version
         - timestamp
       properties:
         status:
           type: string
-          enum: [healthy, unhealthy]
-          description: Health status
+          enum: [ready, not_ready]
+          description: Readiness status
+        message:
+          type: string
+          description: Human-readable message
         timestamp:
           type: string
           format: date-time
-          description: Timestamp of the health check
+          description: Timestamp of the readiness check
         version:
           type: string
           description: Application version
 
-    User:
+    MetadataPagination:
       type: object
       required:
-        - id
-        - email
-        - name
-        - createdAt
-        - updatedAt
+        - cursor
+        - hasMore
       properties:
-        id:
-          type: string
-          format: uuid
-          description: User unique identifier
-        email:
-          type: string
-          format: email
-          description: User email address
-        name:
-          type: string
-          description: User full name
-          minLength: 1
-          maxLength: 100
-        avatar:
-          type: string
-          format: uri
-          description: User avatar URL
-        isActive:
-          type: boolean
-          description: Whether the user is active
-          default: true
-        createdAt:
-          type: string
-          format: date-time
-          description: User creation timestamp
-        updatedAt:
-          type: string
-          format: date-time
-          description: User last update timestamp
-
-    CreateUserRequest:
-      type: object
-      required:
-        - email
-        - name
-      properties:
-        email:
-          type: string
-          format: email
-          description: User email address
-        name:
-          type: string
-          description: User full name
-          minLength: 1
-          maxLength: 100
-        avatar:
-          type: string
-          format: uri
-          description: User avatar URL
-
-    UpdateUserRequest:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-          description: User email address
-        name:
-          type: string
-          description: User full name
-          minLength: 1
-          maxLength: 100
-        avatar:
-          type: string
-          format: uri
-          description: User avatar URL
-        isActive:
-          type: boolean
-          description: Whether the user is active
-
-    UsersResponse:
-      type: object
-      required:
-        - users
-        - pagination
-      properties:
-        users:
-          type: array
-          items:
-            $ref: "#/components/schemas/User"
-        pagination:
-          $ref: "#/components/schemas/PaginationInfo"
-
-    PaginationInfo:
-      type: object
-      required:
-        - limit
-        - offset
-        - total
-      properties:
-        limit:
+        cursor:
           type: integer
-          description: Maximum number of items returned
-        offset:
-          type: integer
-          description: Number of items skipped
-        total:
-          type: integer
-          description: Total number of items available
+          description: Cursor for pagination
         hasMore:
           type: boolean
-          description: Whether there are more items available
+          description: Whether there are more items to fetch
 
     ErrorResponse:
       type: object
